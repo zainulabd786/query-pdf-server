@@ -10,6 +10,12 @@ import { ChatOpenAI } from "@langchain/openai";
 import { ConversationalRetrievalQAChain } from "langchain/chains";
 import { BufferMemory } from "langchain/memory";
 
+const keys = {
+    hf: "",
+    qdrant: "",
+    xylemLLM: ""
+}
+
 export async function uploadPdf(req, res) {
     if (!req.file) {
         return res.status(400).send('No file uploaded or invalid file format.');
@@ -43,13 +49,13 @@ export async function uploadPdf(req, res) {
             });
         });
         const embeddings = new HuggingFaceInferenceEmbeddings({
-            apiKey: "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", // In Node.js defaults to process.env.HUGGINGFACEHUB_API_KEY
+            apiKey: keys.hf, // In Node.js defaults to process.env.HUGGINGFACEHUB_API_KEY
             model: "thenlper/gte-small",
         });
 
         const client = new QdrantClient({
             url: 'https://a0afc391-e8c8-44b4-8b73-f4ff209139fb.us-east4-0.gcp.cloud.qdrant.io:6333',
-            apiKey: '7zEnDhBqgi0BNL4QICBTVJob7iMXcjMBsFSQ2sqYvSWJJa2VMfSF8Q',
+            apiKey: keys.qdrant,
         });
 
         await QdrantVectorStore.fromDocuments(reducedDocs, embeddings, { client, collectionName: 'test1' });
@@ -90,13 +96,13 @@ export async function qyeryPdf(req, res) {
         console.log("input received:", input);
 
         const embeddings = new HuggingFaceInferenceEmbeddings({
-            apiKey: "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", // In Node.js defaults to process.env.HUGGINGFACEHUB_API_KEY
+            apiKey: keys.hf, // In Node.js defaults to process.env.HUGGINGFACEHUB_API_KEY
             model: "thenlper/gte-small",
         });
 
         const client = new QdrantClient({
             url: 'https://a0afc391-e8c8-44b4-8b73-f4ff209139fb.us-east4-0.gcp.cloud.qdrant.io:6333',
-            apiKey: '7zEnDhBqgi0BNL4QICBTVJob7iMXcjMBsFSQ2sqYvSWJJa2VMfSF8Q',
+            apiKey: keys.qdrant,
         });
 
         const vectorStore = await QdrantVectorStore.fromExistingCollection(
@@ -104,26 +110,37 @@ export async function qyeryPdf(req, res) {
             { client, collectionName: "test1"}
         );
 
-        if (firstMsg) {
-            console.log("initializing chain");
-            model = new ChatOpenAI({
-                openAIApiKey: "xlmsk_rmWqVPzL_78VXbp0Sk21LgOppto9p57ByxkZduVGj1SRxuqw",
-                configuration: {
-                    apiKey: "xlmsk_rmWqVPzL_78VXbp0Sk21LgOppto9p57ByxkZduVGj1SRxuqw",
-                    baseURL: "https://api.xylem.ai/api/v0",
-                },
-                modelName: "Llama2-7B"
-            });
-            memory = new BufferMemory();
-            chain = ConversationalRetrievalQAChain.fromLLM(model, vectorStore.asRetriever(1, { source: { must: "sample.pdf" } }), {
-                memory: new BufferMemory({ memoryKey: "chat_history", returnMessages: true })
-            });
-        }
-        const response = await chain.call({ question: input });
+        // if (firstMsg) {
+        //     console.log("initializing chain");
+        //     model = new ChatOpenAI({
+        //         openAIApiKey: keys.xylemLLM,
+        //         configuration: {
+        //             // apiKey: "xlmsk_rmWqVPzL_78VXbp0Sk21LgOppto9p57ByxkZduVGj1SRxuqw",
+        //             baseURL: "https://api.xylem.ai/api/v0",
+        //         },
+        //         modelName: "Llama2-7B"
+        //     });
+        //     memory = new BufferMemory();
+
+        //     chain = ConversationalRetrievalQAChain.fromLLM(model, vectorStore.asRetriever(2, { should: [ 
+        //         { key: "source", match: { value: "ZainulAbideen_Resume.pdf" } }
+        //      ] }), {
+        //         memory: new BufferMemory({ memoryKey: "chat_history", returnMessages: true })
+        //     });
+        // }
+        // const response = await chain.call({ question: input });
+
+        const filters = [
+            { field: "metadata.source", value: "ZainulAbideen_Resume.pdf", operation: "==" }
+        ];
+        const hits = await client.search("test1", {
+            collectionName: "my_collection",
+            filters: filters
+        });
 
         console.log(response);
 
-        return res.status(200).json({ result: response });
+        return res.status(200).json({ result: hits });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: error.message });
